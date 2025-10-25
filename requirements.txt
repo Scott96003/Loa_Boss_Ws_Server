@@ -1,0 +1,4 @@
+fastapi
+uvicorn
+gunicorn
+websockets  # 仍需要 websockets 函式庫，因為它在您的邏輯中被使用
