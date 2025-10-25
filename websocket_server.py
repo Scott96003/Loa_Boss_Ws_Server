@@ -30,7 +30,8 @@ app = FastAPI()
 # 您的核心連線處理邏輯現在是一個 FastAPI WebSocket 路由
 @app.websocket("/ws") # 這是客戶端連線的路徑，例如 wss://your-service.onrender.com/ws
 async def fastapi_websocket_endpoint(websocket: WebSocket):
-    
+    # 【核心修正：新增 global CONNECTED_CLIENTS】
+    global CONNECTED_CLIENTS
     # 這是您原始檔案中的 server_handler 邏輯
     global MAIN_JSON_DATA 
     
