@@ -121,6 +121,9 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
 async def broadcast(message):
     """將訊息廣播給所有已連線的客戶端，並安全地處理斷線錯誤。"""
     
+# 【✅ 這是必須的修正】
+    global CONNECTED_CLIENTS
+    
     clients_to_remove = set() 
     
     for client in CONNECTED_CLIENTS:
