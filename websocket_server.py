@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from typing import Dict, List  # <--- 在這裡匯入 List！
 from datetime import datetime
 # 導入 FastAPI 和相關模組
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
