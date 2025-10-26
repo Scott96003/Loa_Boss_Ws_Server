@@ -51,7 +51,25 @@ class ConnectionManager:
         else:
             logger.warning(f"用戶 ID '{user_id}' 已存在，跳過註冊。")
 
+    # 🔥 關鍵新增：用於廣播新用戶上線的函數
+    async def broadcast_user_joined(self, new_user_id: str):
+        """通知所有在線用戶有新 ID 上線。"""
+        message = {
+            "type": "user_joined", # 新的信令類型
+            "senderId": "server",
+            "targetId": "all",
+            "newUserId": new_user_id
+        }
+        json_message = json.dumps(message)
         
+        # 廣播給所有已經註冊的用戶（除了新加入的用戶自己）
+        for user_id, ws in self.user_to_ws.items():
+            if user_id != new_user_id:
+                try:
+                    await ws.send_text(json_message)
+                except Exception as e:
+                    logger.error(f"通知 {user_id} 新用戶上線失敗: {e}")
+
     def disconnect(self, websocket: WebSocket):
         """處理斷線，並更新用戶數。"""
         self.active_connections.discard(websocket)
