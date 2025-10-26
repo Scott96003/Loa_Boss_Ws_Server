@@ -24,6 +24,8 @@ class ConnectionManager:
     def __init__(self):
         # 連線集合，現在是類別屬性
         self.active_connections: set[WebSocket] = set()
+        self.user_to_ws: dict[str, WebSocket] = {} # 新增：ID 映射到 WebSocket
+
         # 共享數據，現在是類別屬性
         self.main_json_data = {
             "status": "Offline",
@@ -39,15 +41,45 @@ class ConnectionManager:
         self.active_connections.add(websocket)
         self.update_user_count()
 
+    def register_user(self, user_id: str, websocket: WebSocket):
+        """將連線與其唯一的客戶端 ID 關聯。"""
+        self.user_to_ws[user_id] = websocket
+        self.ws_to_user[websocket] = user_id
+        logger.info(f"用戶 ID '{user_id}' 已註冊。")
+        
     def disconnect(self, websocket: WebSocket):
         """處理斷線，並更新用戶數。"""
         self.active_connections.discard(websocket)
+        
+        # 移除 ID 映射
+        user_id = self.ws_to_user.pop(websocket, None)
+        if user_id:
+            self.user_to_ws.pop(user_id, None)
+            logger.info(f"用戶 ID '{user_id}' 已移除。")
+        
         self.update_user_count()
 
     def update_user_count(self):
         """更新共享數據中的線上用戶數。"""
         self.main_json_data["users_online"] = len(self.active_connections)
-    
+
+    # 新增：點對點傳輸方法
+    async def send_personal_message(self, message: str, user_id: str) -> bool:
+        """將訊息傳送給特定的客戶端 ID。"""
+        client = self.user_to_ws.get(user_id)
+        if client and client.client_state == WebSocketState.CONNECTED:
+            try:
+                await client.send_text(message)
+                return True
+            except Exception as e:
+                logger.error(f"傳送訊息給 {user_id} 時發生錯誤: {e}")
+                # 如果傳輸失敗，視為斷線處理
+                self.disconnect(client) 
+                return False
+        
+        logger.warning(f"用戶 ID '{user_id}' 不在線或未註冊。無法傳送訊息。")
+        return False
+
     async def broadcast(self, message: str):
         """將訊息廣播給所有已連線的客戶端，並安全地處理斷線錯誤。"""
         clients_to_remove = set() 
@@ -116,14 +148,27 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
                 
                 logger.info(f"廣播訊息類型: {message_type}")
                 await manager.broadcast(json_string_to_broadcast)
-                
+
             elif message_type in ['offer','answer','candidate','chat_message']:
-                logger.info(f"廣播訊息類型: {message_type}")
-                await manager.broadcast(message)
-            # 如果您還需要處理其他特殊的訊息，可以繼續使用 elif
-            # elif message_type == "Something_Else":
-            #     ... 
-            
+                sender_id = data.get("senderId")
+                target_id = data.get("targetId") # 接收目標 ID
+
+                # --- 【步驟 A：首次連線時註冊 ID】 ---
+                if sender_id and websocket not in manager.ws_to_user:
+                    manager.register_user(sender_id, websocket)
+                    current_user_id = sender_id
+                    logger.info(f"用戶 {sender_id} 完成註冊。")
+
+                    
+                # 確保有目標 ID
+                if target_id:
+                    # 點對點轉發給目標用戶
+                    success = await manager.send_personal_message(message, target_id)
+                    log_action = "成功轉發" if success else "轉發失敗"
+                    logger.info(f"[P2P 信令] {sender_id} -> {target_id}: {message_type}. {log_action}.")
+                else:
+                    logger.warning(f"[P2P 信令] 收到信令但缺少 targetId: {message_type}")
+
             else:
                 logger.info(f"收到未知訊息類型: {message_type}")
 
