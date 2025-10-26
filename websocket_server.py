@@ -112,10 +112,10 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
             if message_type == "Sync_Boss_Data":
                 # 廣播更新
                 await manager.broadcast(data)             
-            elif  message_type == "Boss_Death"
+            elif  message_type == "Boss_Death":
                 # 廣播更新
                 await manager.broadcast(data)
-            elif message_type == "AckSync"
+            elif message_type == "AckSync":
                # 廣播更新
                 await manager.broadcast(data)
             else:
