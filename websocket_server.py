@@ -108,16 +108,19 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
             
             message_type = data.get("type")
             
-
-            if message_type == "Sync_Boss_Data":
-                # 廣播更新
-                await manager.broadcast(data)             
-            elif  message_type == "Boss_Death":
-                # 廣播更新
-                await manager.broadcast(data)
-            elif message_type == "AckSync":
-               # 廣播更新
-                await manager.broadcast(data)
+            # 【關鍵修正：在廣播前進行 JSON 序列化】
+            if message_type in ["Sync_Boss_Data", "Boss_Death", "AckSync"]:
+                
+                # 將 Python 字典序列化為 JSON 字串，以便傳輸
+                json_string_to_broadcast = json.dumps(data)
+                
+                logger.info(f"廣播訊息類型: {message_type}")
+                await manager.broadcast(json_string_to_broadcast)
+            
+            # 如果您還需要處理其他特殊的訊息，可以繼續使用 elif
+            # elif message_type == "Something_Else":
+            #     ... 
+            
             else:
                 logger.info(f"收到未知訊息類型: {message_type}")
 
