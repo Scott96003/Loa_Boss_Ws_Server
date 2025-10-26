@@ -48,6 +48,9 @@ class ConnectionManager:
             self.user_to_ws[user_id] = websocket
             self.ws_to_user[websocket] = user_id
             logger.info(f"用戶 ID '{user_id}' 已註冊。")
+
+            # 🔥 關鍵新增：如果確實是新用戶，廣播通知所有其他人
+            asyncio.create_task(self.broadcast_user_joined(user_id))
         else:
             logger.warning(f"用戶 ID '{user_id}' 已存在，跳過註冊。")
 
