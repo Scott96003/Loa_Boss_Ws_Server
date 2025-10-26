@@ -116,35 +116,16 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
             
             message_type = data.get("type")
             
-            if message_type == "UPDATE_FROM_A":
-                # 更新伺服器端的主 JSON
-                update_payload = data.get("payload", {})
-                
-                manager.main_json_data.update({
-                    "last_updated": datetime.now().isoformat(),
-                    "users_online": len(manager.active_connections), 
-                    "custom_data": update_payload 
-                })
-                
-                logger.info(f"收到 A 的主數據更新")
-                
+
+            if message_type == "Sync_Boss_Data":
                 # 廣播更新
-                broadcast_message = json.dumps({
-                    "type": "data_update",
-                    "payload": manager.main_json_data 
-                })
-                
-                await manager.broadcast(broadcast_message)
-            
-            elif message_type == "MESSAGE_FROM_A":
-                chat_message = data.get("content", "無內容")
-                logger.info(f"收到 A 的即時訊息：{chat_message}")
-
-                await manager.broadcast(json.dumps({
-                    "type": "chat_message",
-                    "content": chat_message
-                }))
-
+                await manager.broadcast(data)             
+            elif  message_type == "Boss_Death"
+                # 廣播更新
+                await manager.broadcast(data)
+            elif message_type == "AckSync"
+               # 廣播更新
+                await manager.broadcast(data)
             else:
                 logger.info(f"收到未知訊息類型: {message_type}")
 
