@@ -12,9 +12,8 @@ from starlette.middleware.cors import CORSMiddleware # 新增：為了部署到 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 創建一個單例實例，在應用程式的生命週期內管理連線和數據
 # ----------------------------------------------
-# 1. 連線管理類別 (Connection Manager) - 修正版
+# 1. 連線管理類別 (Connection Manager)
 # ----------------------------------------------
 
 class ConnectionManager:
@@ -23,9 +22,6 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: set[WebSocket] = set()
         self.user_to_ws: Dict[str, WebSocket] = {} # Map<ID, WebSocket>
-
-        # 🚨 修正 #1.1：移除 ws_to_user 的初始化，因為我們不需要它，或者必須新增。
-        # 為了保持您的邏輯結構，我將它加回來，但建議只用 user_to_ws
         self.ws_to_user: Dict[WebSocket, str] = {} # Map<WebSocket, ID> - 反向查找
 
         self.main_json_data = {
@@ -43,18 +39,17 @@ class ConnectionManager:
 
     def register_user(self, user_id: str, websocket: WebSocket):
         """將連線與其唯一的客戶端 ID 關聯。"""
-        # 🚨 修正 #1.2：確保只在 ID 不存在時註冊，防止覆蓋
+        # 確保只在 ID 不存在時註冊，防止覆蓋
         if user_id not in self.user_to_ws:
             self.user_to_ws[user_id] = websocket
             self.ws_to_user[websocket] = user_id
             logger.info(f"用戶 ID '{user_id}' 已註冊。")
 
-            # 🔥 關鍵新增：如果確實是新用戶，廣播通知所有其他人
+            # 🔥 關鍵：如果確實是新用戶，廣播通知所有其他人
             asyncio.create_task(self.broadcast_user_joined(user_id))
         else:
             logger.warning(f"用戶 ID '{user_id}' 已存在，跳過註冊。")
 
-    # 🔥 關鍵新增：用於廣播新用戶上線的函數
     async def broadcast_user_joined(self, new_user_id: str):
         """通知所有在線用戶有新 ID 上線。"""
         message = {
@@ -77,7 +72,6 @@ class ConnectionManager:
         """處理斷線，並更新用戶數。"""
         self.active_connections.discard(websocket)
         
-        # 🚨 修正 #1.3：處理斷線邏輯：從 ws_to_user 移除後，再從 user_to_ws 移除
         user_id = self.ws_to_user.pop(websocket, None)
         if user_id:
             self.user_to_ws.pop(user_id, None)
@@ -155,7 +149,7 @@ app.add_middleware(
 @app.websocket("/ws") # 路由路徑
 async def fastapi_websocket_endpoint(websocket: WebSocket):
     
-    current_user_id = None # 🚨 修正 #2：確保 current_user_id 在 try 塊之外被初始化
+    current_user_id = None 
 
     try:
         # 1. 註冊連線
@@ -175,30 +169,31 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
             
             message_type = data.get("type")
             sender_id = data.get("senderId")
+            target_id = data.get("targetId") # 提前取得
+
             
-            # --- 【步驟 A：首次連線時註冊 ID】 ---
-            # 客戶端第一次發送 Offer/Answer 或任何帶有 senderId 的信令時進行註冊
-            if sender_id and sender_id not in manager.user_to_ws:
-                manager.register_user(sender_id, websocket)
-                current_user_id = sender_id # 註冊成功後，設置當前連線的 ID
-
-            # 如果已經註冊，也更新 current_user_id，以便斷線時使用
-            if sender_id in manager.user_to_ws:
+            # --- 【步驟 A：檢查並設置 current_user_id】 ---
+            # 確保連線的 current_user_id 與其 senderId 匹配
+            if sender_id and sender_id in manager.user_to_ws:
                 current_user_id = sender_id
-
-
+            
             # --- 【步驟 B：處理信令或指令】 ---
-            if message_type in ["Sync_Boss_Data", "Boss_Death", "Ack_Sync"]:
-                # 將 Python 字典序列化為 JSON 字串，以便傳輸
-                json_string_to_broadcast = json.dumps(data)
-                
-                logger.info(f"廣播訊息類型: {message_type}")
-                await manager.broadcast(json_string_to_broadcast)
+
+            if message_type == 'client_register':
+                # 處理客戶端註冊訊息
+                if sender_id and sender_id not in manager.user_to_ws:
+                    manager.register_user(sender_id, websocket)
+                    current_user_id = sender_id
+                    logger.info(f"✅ 成功處理客戶端註冊：{sender_id}")
+                else:
+                    logger.warning(f"客戶端註冊訊息重複或無效：{sender_id}")
             
             elif message_type in ['offer','answer','candidate','chat_message']:
-                target_id = data.get("targetId") # 接收目標 ID
+                # 處理 WebRTC 信令與 P2P 訊息
+                if not current_user_id:
+                    logger.warning(f"[P2P 信令] 收到 {message_type} 但發送方 ID 未註冊，跳過。")
+                    continue
                     
-                # 確保有目標 ID
                 if target_id:
                     # 點對點轉發給目標用戶
                     success = await manager.send_personal_message(message, target_id)
@@ -206,19 +201,24 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
                     logger.info(f"[P2P 信令] {sender_id} -> {target_id}: {message_type}. {log_action}.")
                 else:
                     logger.warning(f"[P2P 信令] 收到信令但缺少 targetId: {message_type}")
+
+            elif message_type in ["Sync_Boss_Data", "Boss_Death", "Ack_Sync"]:
+                # 處理遊戲廣播訊息
+                json_string_to_broadcast = json.dumps(data)
+                
+                logger.info(f"廣播訊息類型: {message_type}")
+                await manager.broadcast(json_string_to_broadcast)
                 
             elif message_type == 'request_online_users':
-                # 取得所有用戶 ID
+                # 處理請求在線用戶列表
                 online_users = manager.get_online_users()
                 
-                # 建立回覆訊息
                 response = {
                     "type": "online_users_list",
                     "users": online_users,
                     "senderId": "server"
                 }
                 
-                # 將列表發送回給請求者 (使用 current_user_id 或 sender_id)
                 target_id_for_response = current_user_id if current_user_id else sender_id
                 if target_id_for_response:
                     await manager.send_personal_message(json.dumps(response), target_id_for_response)
@@ -227,7 +227,7 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
                     logger.error("🚫 無法回覆在線用戶列表：目標 ID 不明。")
                 
             else:
-                logger.info(f"收到未知訊息類型: {message_type}")
+                logger.warning(f"收到未知訊息類型: {message_type}") # 將 INFO 改為 WARNING
 
 
     except WebSocketDisconnect:
