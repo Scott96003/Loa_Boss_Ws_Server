@@ -116,7 +116,7 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
                 
                 logger.info(f"廣播訊息類型: {message_type}")
                 await manager.broadcast(json_string_to_broadcast)
-            elif message_type in ['offer','answer','candidate','chat_message']
+            elif message_type in ['offer','answer','candidate','chat_message']:
                 logger.info(f"廣播訊息類型: {message_type}")
                 await manager.broadcast(message)
             # 如果您還需要處理其他特殊的訊息，可以繼續使用 elif
