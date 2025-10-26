@@ -109,7 +109,7 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
             message_type = data.get("type")
             
             # 【關鍵修正：在廣播前進行 JSON 序列化】
-            if message_type in ["Sync_Boss_Data", "Boss_Death", "AckSync"]:
+            if message_type in ["Sync_Boss_Data", "Boss_Death", "Ack_Sync"]:
                 
                 # 將 Python 字典序列化為 JSON 字串，以便傳輸
                 json_string_to_broadcast = json.dumps(data)
