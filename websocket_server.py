@@ -95,14 +95,6 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
         await manager.connect(websocket)
         logger.info(f"新客戶端連線。當前連線數: {len(manager.active_connections)}")
 
-        # 數據同步：推送最新的數據
-        sync_message = json.dumps({
-            "type": "data_sync",
-            "payload": manager.main_json_data 
-        })
-        await websocket.send_text(sync_message)
-        logger.info("已同步數據給新連線")
-
         # 2. 處理接收到的訊息
         while True:
             # 接收客戶端訊息
