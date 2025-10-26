@@ -63,6 +63,10 @@ class ConnectionManager:
         """更新共享數據中的線上用戶數。"""
         self.main_json_data["users_online"] = len(self.active_connections)
 
+    def get_online_users(self) -> List[str]:
+        """返回所有在線用戶的 ID 列表。"""
+        return list(self.user_to_ws.keys())
+
     # 新增：點對點傳輸方法
     async def send_personal_message(self, message: str, user_id: str) -> bool:
         """將訊息傳送給特定的客戶端 ID。"""
@@ -148,6 +152,7 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
                 
                 logger.info(f"廣播訊息類型: {message_type}")
                 await manager.broadcast(json_string_to_broadcast)
+                continue # 跳過後續的
 
             elif message_type in ['offer','answer','candidate','chat_message']:
                 sender_id = data.get("senderId")
@@ -168,7 +173,24 @@ async def fastapi_websocket_endpoint(websocket: WebSocket):
                     logger.info(f"[P2P 信令] {sender_id} -> {target_id}: {message_type}. {log_action}.")
                 else:
                     logger.warning(f"[P2P 信令] 收到信令但缺少 targetId: {message_type}")
+                continue # 跳過後續的
 
+            elif message_type == 'request_online_users':
+                # 取得所有用戶 ID
+                online_users = manager.get_online_users()
+                
+                # 建立回覆訊息
+                response = {
+                    "type": "online_users_list",
+                    "users": online_users,
+                    "senderId": "server" # 標記為伺服器發送
+                }
+                
+                # 將列表發送回給請求者
+                await manager.send_personal_message(json.dumps(response), client_id)
+                logger.info(f"📢 已將 {len(online_users)} 個用戶 ID 列表回傳給 {client_id}")
+                continue # 跳過後續的
+                
             else:
                 logger.info(f"收到未知訊息類型: {message_type}")
 
